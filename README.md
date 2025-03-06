@@ -37,15 +37,37 @@ results = hltb.search("The Witcher 3")
 
 The `search` method returns an array of possible games, or `nil` if no results were found or there was an error in the request.
 
-Each result is a `HowLongToBeat::Entry` object containing:
-- `id`: The game's ID on HowLongToBeat
-- `name`: The game's name
-- `description`: Game description
-- `main_story`: Main story completion time
-- `main_plus_sides`: Main story + side quests completion time
-- `completionist`: 100% completion time
-- `all_styles`: Average time across all playstyles
-- `similarity`: How closely the game name matches the search query (0.0 to 1.0)
+Each result is an array of [`HowLongToBeat::HowLongToBeatEntry`](https://github.com/dpashutskii/howlongtobeat/blob/main/lib/howlongtobeat/how_long_to_beat_entry.rb) objects containing:
+
+#### Base Game Details
+- `game_id`: The game's ID on HowLongToBeat (Integer)
+- `game_name`: The game's name (String)
+- `game_alias`: Alternative names for the game (String)
+- `game_type`: Type of content (e.g., "game", "dlc") (String)
+- `game_image_url`: URL to the game's cover image (String)
+- `game_web_link`: URL to the game's HowLongToBeat page (String)
+- `review_score`: User review score (Integer, 0-100)
+- `profile_dev`: Developer information (String)
+- `profile_platforms`: Available platforms (Array of Strings)
+- `release_world`: Release year (Integer)
+
+#### Completion Times (all in hours)
+- `main_story`: Main story completion time (Float)
+- `main_extra`: Main story + side quests completion time (Float)
+- `completionist`: 100% completion time (Float)
+- `all_styles`: Average time across all playstyles (Float)
+- `coop_time`: Co-op gameplay time (Float)
+- `mp_time`: Multiplayer gameplay time (Float)
+
+#### Complexity Flags
+- `complexity_lvl_combine`: Combined gameplay complexity (Boolean)
+- `complexity_lvl_sp`: Single-player complexity (Boolean)
+- `complexity_lvl_co`: Co-op complexity (Boolean)
+- `complexity_lvl_mp`: Multiplayer complexity (Boolean)
+
+#### Other
+- `similarity`: How closely the game name matches the search query (Float, 0.0 to 1.0)
+- `json_content`: Raw JSON data from the API (Hash)
 
 ### Search by ID
 
@@ -55,7 +77,7 @@ You can also search for a game using its HowLongToBeat ID:
 result = hltb.search_from_id(10270)  # The Witcher 3: Wild Hunt
 ```
 
-This returns a single `Entry` object or `nil` if not found.
+This returns a single `HowLongToBeatEntry` object or `nil` if not found.
 
 ### Search Modifiers
 
