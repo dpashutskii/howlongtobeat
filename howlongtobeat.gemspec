@@ -15,7 +15,7 @@ Gem::Specification.new do |spec|
   spec.files         = Dir["lib/**/*", "LICENSE", "README.md", "CHANGELOG.md", "CODE_OF_CONDUCT.md"]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "nokogiri", "~> 1.15"
+  spec.add_dependency "nokogiri", "~> 1.15.0"
   spec.add_dependency "ostruct", "~> 0.6.0"
 
   spec.add_development_dependency "bundler", "~> 2.0"
