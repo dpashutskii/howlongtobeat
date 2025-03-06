@@ -1,5 +1,7 @@
 # HowLongToBeat Ruby API
 
+![CI](https://github.com/dpashutskii/howlongtobeat/actions/workflows/ci.yml/badge.svg)
+
 A simple Ruby API to read data from howlongtobeat.com.
 
 It is inspired by [ScrappyCocco's HowLongToBeat Python API](https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI).
