@@ -87,6 +87,10 @@ hltb = HowLongToBeat::HowLongToBeat.new(0.7)
 results = hltb.search("The Witcher 3")
 ```
 
+## Who's Using It
+
+This gem was originally created for and is being used by [SearchToPlay](https://searchtoplay.com), a platform that helps gamers discover and track their gaming journey.
+
 ## Development
 
 After checking out the repo, run `bundle install` to install dependencies. Then, run `rake test` to run the tests.
