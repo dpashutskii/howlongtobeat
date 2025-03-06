@@ -37,7 +37,7 @@ results = hltb.search("The Witcher 3")
 
 The `search` method returns an array of possible games, or `nil` if no results were found or there was an error in the request.
 
-Each result is an array of [`HowLongToBeat::HowLongToBeatEntry`](https://github.com/dpashutskii/howlongtobeat/blob/main/lib/howlongtobeat/how_long_to_beat_entry.rb) objects containing:
+Each result is an [`HowLongToBeatEntry`](https://github.com/dpashutskii/howlongtobeat/blob/main/lib/howlongtobeat/how_long_to_beat_entry.rb) object containing:
 
 #### Base Game Details
 - `game_id`: The game's ID on HowLongToBeat (Integer)
@@ -77,7 +77,7 @@ You can also search for a game using its HowLongToBeat ID:
 result = hltb.search_from_id(10270)  # The Witcher 3: Wild Hunt
 ```
 
-This returns a single `HowLongToBeatEntry` object or `nil` if not found.
+This returns a single [`HowLongToBeatEntry`](https://github.com/dpashutskii/howlongtobeat/blob/main/lib/howlongtobeat/how_long_to_beat_entry.rb) object or `nil` if not found.
 
 ### Search Modifiers
 
