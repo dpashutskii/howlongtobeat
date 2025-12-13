@@ -66,7 +66,8 @@ module HowLongToBeat
           'content-type' => 'application/json',
           'accept' => '*/*',
           'User-Agent' => random_user_agent,
-          'referer' => REFERER_HEADER
+          'referer' => REFERER_HEADER,
+          'origin' => BASE_URL
         }
       end
 
@@ -116,27 +117,12 @@ module HowLongToBeat
       end
 
       def send_web_request(game_name, search_modifiers = SearchModifiers::NONE, page = 1)
-        headers = get_search_request_headers
-        search_info = send_website_request_getcode(false)
-        search_info ||= send_website_request_getcode(true)
+        token = fetch_search_token
+        return nil unless token
 
-        return nil unless search_info&.api_key
-
-        if search_info.search_url
-          search_url = "#{BASE_URL}/#{search_info.search_url}"
-        else
-          search_url = SEARCH_URL
-        end
-
-        # Try with API key in URL
-        search_url_with_key = "#{search_url}/#{search_info.api_key}"
+        headers = get_search_request_headers.merge('x-auth-token' => token)
         payload = get_search_request_data(game_name, search_modifiers, page)
-        response = make_request(search_url_with_key, headers, payload)
-        return response if response
-
-        # Fallback to standard search with API key in payload
-        payload = get_search_request_data(game_name, search_modifiers, page, search_info)
-        make_request(search_url, headers, payload)
+        make_request(SEARCH_URL, headers, payload)
       end
 
       def get_game_title(game_id)
@@ -155,6 +141,18 @@ module HowLongToBeat
       end
 
       private
+
+      def fetch_search_token
+        url = "#{BASE_URL}/api/search/init?t=#{Time.now.to_i}"
+        headers = get_title_request_headers
+        response = make_get_request(url, headers)
+        return nil unless response
+
+        json = JSON.parse(response) rescue nil
+        json.is_a?(Hash) ? json['token'] : nil
+      rescue StandardError
+        nil
+      end
 
       def send_website_request_getcode(parse_all_scripts)
         headers = get_title_request_headers
