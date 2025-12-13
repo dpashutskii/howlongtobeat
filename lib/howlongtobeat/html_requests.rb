@@ -179,7 +179,9 @@ module HowLongToBeat
       def get_title_request_headers
         {
           'User-Agent' => random_user_agent,
-          'referer' => REFERER_HEADER
+          'referer' => REFERER_HEADER,
+          'origin' => BASE_URL,
+          'accept' => '*/*'
         }
       end
 
