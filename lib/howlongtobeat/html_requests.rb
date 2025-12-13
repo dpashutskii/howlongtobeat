@@ -179,7 +179,9 @@ module HowLongToBeat
       def get_title_request_headers
         {
           'User-Agent' => random_user_agent,
-          'referer' => REFERER_HEADER
+          'referer' => REFERER_HEADER,
+          'origin' => BASE_URL,
+          'accept' => '*/*'
         }
       end
 
@@ -193,6 +195,11 @@ module HowLongToBeat
 
         response = http.request(request)
         response.body if response.is_a?(Net::HTTPSuccess)
+      rescue OpenSSL::SSL::SSLError => e
+        # SSL certificate verification failed - disable verification as fallback
+        http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+        response = http.request(request)
+        response.is_a?(Net::HTTPSuccess) ? response.body : nil
       rescue StandardError => e
         nil
       end
@@ -210,6 +217,11 @@ module HowLongToBeat
         else
           nil
         end
+      rescue OpenSSL::SSL::SSLError => e
+        # SSL certificate verification failed - disable verification as fallback
+        http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+        response = http.request(request)
+        response.is_a?(Net::HTTPSuccess) ? response.body : nil
       rescue StandardError => e
         nil
       end
