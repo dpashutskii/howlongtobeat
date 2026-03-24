@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - None
 
-## [0.2.1] - 2026-03-24
+## [0.2.2] - 2026-03-24
 
 ### Fixed
 - Restore search against HowLongToBeat's current API by discovering the POST search endpoint from site scripts (e.g. `/api/finder`) instead of hardcoding `/api/search`
@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Default search endpoint fallback is now `/api/finder`
+
+## [0.2.1] - 2025-12-13
+
+### Fixed
+- Added SSL certificate verification fallback for environments with certificate issues
+- Added `origin` and `accept` headers to token fetch requests for proper API authentication
 
 ## [0.2.0] - 2025-12-13
 
