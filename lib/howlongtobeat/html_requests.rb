@@ -8,7 +8,7 @@ module HowLongToBeat
     BASE_URL = 'https://howlongtobeat.com'
     REFERER_HEADER = BASE_URL
     GAME_URL = "#{BASE_URL}/game"
-    SEARCH_URL = "#{BASE_URL}/api/search"
+    SEARCH_URL = "#{BASE_URL}/api/finder"
 
     class SearchModifiers
       NONE = ""
@@ -47,15 +47,25 @@ module HowLongToBeat
       end
 
       def extract_search_url_script(script_content)
-        pattern = /fetch\(\s*["'](\/api\/[^"']*)['"]((?:\s*\.concat\(\s*["']([^"']*)['"]\s*\))+)\s*,/
-        if (matches = script_content.match(pattern))
+        # Prefer the search endpoint used in POST fetch calls, which is more stable
+        # than hardcoding "/api/search" and works with variants like "/api/finder".
+        post_fetch_pattern = /fetch\s*\(\s*["']\/api\/([a-zA-Z0-9_\/-]+)[^"']*["']\s*,\s*{[^}]*method:\s*["']POST["'][^}]*}/mi
+        if (match = script_content.match(post_fetch_pattern))
+          path_suffix = match[1]
+          base_path = path_suffix.include?('/') ? path_suffix.split('/').first : path_suffix
+          return "/api/#{base_path}"
+        end
+
+        # Legacy fallback for previous script shape using .concat(...)
+        legacy_pattern = /fetch\(\s*["'](\/api\/[^"']*)['"]((?:\s*\.concat\(\s*["']([^"']*)['"]\s*\))+)\s*,/
+        if (matches = script_content.match(legacy_pattern))
           endpoint = matches[1]
           concat_calls = matches[2]
           concat_strings = concat_calls.scan(/\.concat\(\s*["']([^"']*)['"]\s*\)/).flatten
-          concatenated_str = concat_strings.join
-          concatenated_str = concatenated_str.gsub(/["\(\)\[\]'\\]/, '')
+          concatenated_str = concat_strings.join.gsub(/["\(\)\[\]'\\]/, '')
           return endpoint if concatenated_str == @api_key
         end
+
         nil
       end
     end
@@ -117,12 +127,25 @@ module HowLongToBeat
       end
 
       def send_web_request(game_name, search_modifiers = SearchModifiers::NONE, page = 1)
-        token = fetch_search_token
-        return nil unless token
+        search_info = send_website_request_getcode(false)
+        if search_info.nil? || search_info.search_url.nil?
+          search_info = send_website_request_getcode(true)
+        end
 
-        headers = get_search_request_headers.merge('x-auth-token' => token)
-        payload = get_search_request_data(game_name, search_modifiers, page)
-        make_request(SEARCH_URL, headers, payload)
+        endpoint_candidates = build_endpoint_candidates(search_info&.search_url)
+
+        endpoint_candidates.each do |endpoint|
+          token = fetch_search_token(endpoint)
+          next unless token
+
+          headers = get_search_request_headers.merge('x-auth-token' => token)
+          payload = get_search_request_data(game_name, search_modifiers, page, search_info)
+          search_url = "#{BASE_URL}#{endpoint}"
+          response = make_request(search_url, headers, payload)
+          return response if response
+        end
+
+        nil
       end
 
       def get_game_title(game_id)
@@ -142,16 +165,40 @@ module HowLongToBeat
 
       private
 
-      def fetch_search_token
-        url = "#{BASE_URL}/api/search/init?t=#{Time.now.to_i}"
+      def fetch_search_token(parsed_search_url = nil)
+        base_endpoint = parsed_search_url.to_s.strip
+        base_endpoint = '/api/finder' if base_endpoint.empty?
+        base_endpoint = "/#{base_endpoint}" unless base_endpoint.start_with?('/')
+        base_endpoint = base_endpoint.sub(%r{/+\z}, '')
+        base_endpoint = base_endpoint.sub(%r{/init\z}, '')
+
+        url = "#{BASE_URL}#{base_endpoint}/init?t=#{Time.now.to_i}"
         headers = get_title_request_headers
         response = make_get_request(url, headers)
         return nil unless response
 
         json = JSON.parse(response) rescue nil
-        json.is_a?(Hash) ? json['token'] : nil
+        return nil unless json.is_a?(Hash)
+
+        json['token'] || json.dig('data', 'token') || json['auth_token'] || json['authToken']
       rescue StandardError
         nil
+      end
+
+      def build_endpoint_candidates(parsed_endpoint = nil)
+        preferred = parsed_endpoint.to_s.strip
+        candidates = []
+        candidates << preferred unless preferred.empty?
+        candidates.concat(['/api/finder', '/api/search', '/api/s'])
+
+        normalized = candidates.map do |endpoint|
+          next nil if endpoint.nil? || endpoint.strip.empty?
+          value = endpoint.strip
+          value = "/#{value}" unless value.start_with?('/')
+          value.sub(%r{/+\z}, '')
+        end
+
+        normalized.compact.uniq
       end
 
       def send_website_request_getcode(parse_all_scripts)
@@ -170,7 +217,7 @@ module HowLongToBeat
           next unless script_content
 
           search_info = SearchInfo.new(script_content)
-          return search_info if search_info.api_key && !search_info.api_key.empty?
+          return search_info if (search_info.search_url && !search_info.search_url.empty?) || (search_info.api_key && !search_info.api_key.empty?)
         end
 
         nil
@@ -195,12 +242,12 @@ module HowLongToBeat
 
         response = http.request(request)
         response.body if response.is_a?(Net::HTTPSuccess)
-      rescue OpenSSL::SSL::SSLError => e
+      rescue OpenSSL::SSL::SSLError
         # SSL certificate verification failed - disable verification as fallback
         http.verify_mode = OpenSSL::SSL::VERIFY_NONE
         response = http.request(request)
         response.is_a?(Net::HTTPSuccess) ? response.body : nil
-      rescue StandardError => e
+      rescue StandardError
         nil
       end
 
@@ -217,12 +264,12 @@ module HowLongToBeat
         else
           nil
         end
-      rescue OpenSSL::SSL::SSLError => e
+      rescue OpenSSL::SSL::SSLError
         # SSL certificate verification failed - disable verification as fallback
         http.verify_mode = OpenSSL::SSL::VERIFY_NONE
         response = http.request(request)
         response.is_a?(Net::HTTPSuccess) ? response.body : nil
-      rescue StandardError => e
+      rescue StandardError
         nil
       end
 

@@ -27,7 +27,10 @@ module HowLongToBeat
 
     def parse_json_result(input_json_result)
       response_result = JSON.parse(input_json_result)
-      response_result["data"].each do |game|
+      games = extract_games(response_result)
+      return if games.nil? || games.empty?
+
+      games.each do |game|
         new_game_entry = parse_json_element(game)
 
         if @game_id && new_game_entry.game_id.to_s != @game_id.to_s
@@ -42,35 +45,74 @@ module HowLongToBeat
 
     private
 
+    def extract_games(response_result)
+      return response_result if response_result.is_a?(Array)
+      return [] unless response_result.is_a?(Hash)
+
+      %w[data results result items games].each do |key|
+        value = response_result[key]
+        return value if value.is_a?(Array)
+      end
+
+      []
+    end
+
+    def field(input, *keys)
+      keys.each do |key|
+        return input[key] if input.key?(key)
+      end
+      nil
+    end
+
+    def normalize_platforms(value)
+      return value if value.is_a?(Array)
+      return nil if value.nil?
+      value.to_s.split(", ")
+    end
+
+    def normalize_time(value)
+      return nil if value.nil?
+      time_value = value.to_f
+      return nil if time_value <= 0
+
+      # Older payloads expose seconds; some variants may already use hours.
+      if time_value > 500
+        round_time(time_value)
+      else
+        time_value.round(2)
+      end
+    end
+
     def parse_json_element(input_game_element)
       current_entry = HowLongToBeatEntry.new
 
       # Base fields
-      current_entry.game_id = input_game_element["game_id"]
-      current_entry.game_name = input_game_element["game_name"]
-      current_entry.game_alias = input_game_element["game_alias"]
-      current_entry.game_type = input_game_element["game_type"]
-      current_entry.game_image_url = "#{IMAGE_URL_PREFIX}#{input_game_element['game_image']}" if input_game_element["game_image"]
+      current_entry.game_id = field(input_game_element, "game_id", "gameId", "id")
+      current_entry.game_name = field(input_game_element, "game_name", "gameName", "name")
+      current_entry.game_alias = field(input_game_element, "game_alias", "gameAlias", "alias")
+      current_entry.game_type = field(input_game_element, "game_type", "gameType", "type")
+      game_image = field(input_game_element, "game_image", "gameImage", "image")
+      current_entry.game_image_url = "#{IMAGE_URL_PREFIX}#{game_image}" if game_image
       current_entry.game_web_link = "#{GAME_URL_PREFIX}#{current_entry.game_id}"
-      current_entry.review_score = input_game_element["review_score"]
-      current_entry.profile_dev = input_game_element["profile_dev"]
-      current_entry.profile_platforms = input_game_element["profile_platform"]&.split(", ")
-      current_entry.release_world = input_game_element["release_world"]
+      current_entry.review_score = field(input_game_element, "review_score", "reviewScore", "score")
+      current_entry.profile_dev = field(input_game_element, "profile_dev", "profileDev", "developer")
+      current_entry.profile_platforms = normalize_platforms(field(input_game_element, "profile_platform", "profilePlatform", "platforms"))
+      current_entry.release_world = field(input_game_element, "release_world", "releaseWorld", "releaseYear")
       current_entry.json_content = input_game_element
 
       # Completion times
-      current_entry.main_story = round_time(input_game_element["comp_main"])
-      current_entry.main_extra = round_time(input_game_element["comp_plus"])
-      current_entry.completionist = round_time(input_game_element["comp_100"])
-      current_entry.all_styles = round_time(input_game_element["comp_all"])
-      current_entry.coop_time = round_time(input_game_element["invested_co"])
-      current_entry.mp_time = round_time(input_game_element["invested_mp"])
+      current_entry.main_story = normalize_time(field(input_game_element, "comp_main", "compMain", "main_story", "mainStory"))
+      current_entry.main_extra = normalize_time(field(input_game_element, "comp_plus", "compPlus", "main_extra", "mainExtra"))
+      current_entry.completionist = normalize_time(field(input_game_element, "comp_100", "comp100", "completionist"))
+      current_entry.all_styles = normalize_time(field(input_game_element, "comp_all", "compAll", "all_styles", "allStyles"))
+      current_entry.coop_time = normalize_time(field(input_game_element, "invested_co", "investedCo", "coop_time", "coopTime"))
+      current_entry.mp_time = normalize_time(field(input_game_element, "invested_mp", "investedMp", "mp_time", "mpTime"))
 
       # Complexity flags
-      current_entry.complexity_lvl_combine = input_game_element["comp_lvl_combine"].to_i == 1
-      current_entry.complexity_lvl_sp = input_game_element["comp_lvl_sp"].to_i == 1
-      current_entry.complexity_lvl_co = input_game_element["comp_lvl_co"].to_i == 1
-      current_entry.complexity_lvl_mp = input_game_element["comp_lvl_mp"].to_i == 1
+      current_entry.complexity_lvl_combine = field(input_game_element, "comp_lvl_combine", "compLvlCombine", "complexity_lvl_combine", "complexityLvlCombine").to_i == 1
+      current_entry.complexity_lvl_sp = field(input_game_element, "comp_lvl_sp", "compLvlSp", "complexity_lvl_sp", "complexityLvlSp").to_i == 1
+      current_entry.complexity_lvl_co = field(input_game_element, "comp_lvl_co", "compLvlCo", "complexity_lvl_co", "complexityLvlCo").to_i == 1
+      current_entry.complexity_lvl_mp = field(input_game_element, "comp_lvl_mp", "compLvlMp", "complexity_lvl_mp", "complexityLvlMp").to_i == 1
 
       # Auto-filter times based on complexity
       if @auto_filter_times
