@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    howlongtobeat (0.2.2)
+    howlongtobeat (0.2.3)
       nokogiri (~> 1.15.0)
       ostruct (~> 0.6.0)
 
