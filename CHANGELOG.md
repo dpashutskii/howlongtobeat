@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - None
 
+## [0.2.3] - 2026-04-15
+
+### Fixed
+- Send `x-hp-key` and `x-hp-val` headers extracted from the `/init` response, matching HLTB's updated API authentication (mirrors Python package v1.0.21)
+- Inject the dynamic key/value pair from `/init` into the search request payload
+
 ## [0.2.2] - 2026-03-24
 
 ### Fixed

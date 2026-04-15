@@ -70,18 +70,28 @@ module HowLongToBeat
       end
     end
 
+    AuthStruct = Struct.new(:auth_token, :auth_key, :auth_value)
+
     class << self
-      def get_search_request_headers
-        {
+      def get_search_request_headers(auth_struct = nil)
+        headers = {
           'content-type' => 'application/json',
           'accept' => '*/*',
           'User-Agent' => random_user_agent,
-          'referer' => REFERER_HEADER,
-          'origin' => BASE_URL
+          'Referer' => REFERER_HEADER,
+          'Origin' => BASE_URL
         }
+
+        if auth_struct
+          headers['x-auth-token'] = auth_struct.auth_token.to_s if auth_struct.auth_token
+          headers['x-hp-key'] = auth_struct.auth_key.to_s if auth_struct.auth_key
+          headers['x-hp-val'] = auth_struct.auth_value.to_s if auth_struct.auth_value
+        end
+
+        headers
       end
 
-      def get_search_request_data(game_name, search_modifiers = SearchModifiers::NONE, page = 1, search_info = nil)
+      def get_search_request_data(game_name, search_modifiers = SearchModifiers::NONE, page = 1, search_info = nil, auth_struct = nil)
         payload = {
           searchType: 'games',
           searchTerms: game_name.split,
@@ -123,6 +133,10 @@ module HowLongToBeat
           payload[:searchOptions][:users][:id] = search_info.api_key
         end
 
+        if auth_struct&.auth_key && auth_struct&.auth_value
+          payload[auth_struct.auth_key] = auth_struct.auth_value
+        end
+
         payload.to_json
       end
 
@@ -135,11 +149,11 @@ module HowLongToBeat
         endpoint_candidates = build_endpoint_candidates(search_info&.search_url)
 
         endpoint_candidates.each do |endpoint|
-          token = fetch_search_token(endpoint)
-          next unless token
+          auth_struct = fetch_search_token(endpoint)
+          next unless auth_struct
 
-          headers = get_search_request_headers.merge('x-auth-token' => token)
-          payload = get_search_request_data(game_name, search_modifiers, page, search_info)
+          headers = get_search_request_headers(auth_struct)
+          payload = get_search_request_data(game_name, search_modifiers, page, search_info, auth_struct)
           search_url = "#{BASE_URL}#{endpoint}"
           response = make_request(search_url, headers, payload)
           return response if response
@@ -180,7 +194,20 @@ module HowLongToBeat
         json = JSON.parse(response) rescue nil
         return nil unless json.is_a?(Hash)
 
-        json['token'] || json.dig('data', 'token') || json['auth_token'] || json['authToken']
+        token = json['token'] || json.dig('data', 'token') || json['auth_token'] || json['authToken']
+
+        auth_key = nil
+        auth_value = nil
+        json.each do |field_name, field_value|
+          lower = field_name.downcase
+          if lower.match?(/key/)
+            auth_key = field_value
+          elsif lower.match?(/val/)
+            auth_value = field_value
+          end
+        end
+
+        AuthStruct.new(token, auth_key, auth_value)
       rescue StandardError
         nil
       end
