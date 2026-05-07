@@ -8,7 +8,10 @@ module HowLongToBeat
     BASE_URL = 'https://howlongtobeat.com'
     REFERER_HEADER = BASE_URL
     GAME_URL = "#{BASE_URL}/game"
-    SEARCH_URL = "#{BASE_URL}/api/finder"
+    # HLTB renames this endpoint periodically (most recent: /api/find -> /api/finder -> /api/bleed).
+    # The runtime discovery in `send_website_request_getcode` is the source of truth;
+    # this constant is the fallback when discovery fails.
+    SEARCH_URL = "#{BASE_URL}/api/bleed"
 
     class SearchModifiers
       NONE = ""
@@ -48,7 +51,8 @@ module HowLongToBeat
 
       def extract_search_url_script(script_content)
         # Prefer the search endpoint used in POST fetch calls, which is more stable
-        # than hardcoding "/api/search" and works with variants like "/api/finder".
+        # than hardcoding "/api/search" and works with variants like "/api/finder"
+        # and "/api/bleed" (current as of 2026-05).
         post_fetch_pattern = /fetch\s*\(\s*["']\/api\/([a-zA-Z0-9_\/-]+)[^"']*["']\s*,\s*{[^}]*method:\s*["']POST["'][^}]*}/mi
         if (match = script_content.match(post_fetch_pattern))
           path_suffix = match[1]
@@ -141,10 +145,7 @@ module HowLongToBeat
       end
 
       def send_web_request(game_name, search_modifiers = SearchModifiers::NONE, page = 1)
-        search_info = send_website_request_getcode(false)
-        if search_info.nil? || search_info.search_url.nil?
-          search_info = send_website_request_getcode(true)
-        end
+        search_info = send_website_request_getcode
 
         endpoint_candidates = build_endpoint_candidates(search_info&.search_url)
 
@@ -181,7 +182,7 @@ module HowLongToBeat
 
       def fetch_search_token(parsed_search_url = nil)
         base_endpoint = parsed_search_url.to_s.strip
-        base_endpoint = '/api/finder' if base_endpoint.empty?
+        base_endpoint = '/api/bleed' if base_endpoint.empty?
         base_endpoint = "/#{base_endpoint}" unless base_endpoint.start_with?('/')
         base_endpoint = base_endpoint.sub(%r{/+\z}, '')
         base_endpoint = base_endpoint.sub(%r{/init\z}, '')
@@ -216,7 +217,8 @@ module HowLongToBeat
         preferred = parsed_endpoint.to_s.strip
         candidates = []
         candidates << preferred unless preferred.empty?
-        candidates.concat(['/api/finder', '/api/search', '/api/s'])
+        # Known historical endpoints, newest first. HLTB rotates this name periodically.
+        candidates.concat(['/api/bleed', '/api/finder', '/api/search', '/api/s'])
 
         normalized = candidates.map do |endpoint|
           next nil if endpoint.nil? || endpoint.strip.empty?
@@ -228,7 +230,13 @@ module HowLongToBeat
         normalized.compact.uniq
       end
 
-      def send_website_request_getcode(parse_all_scripts)
+      # Walks every <script src> tag on the homepage looking for one that
+      # contains a `fetch("/api/<name>", { method: "POST" })` call. HLTB used to
+      # bundle the relevant code under `_app-*.js`, but the modern (Turbopack)
+      # build emits opaque chunk names like `0-~-0up.q3_p0.js`, so a name-based
+      # filter is no longer reliable — we just iterate and stop on the first
+      # script that yields a `search_url`.
+      def send_website_request_getcode
         headers = get_title_request_headers
         response = make_get_request(BASE_URL, headers)
         return nil unless response
@@ -236,15 +244,16 @@ module HowLongToBeat
         doc = Nokogiri::HTML(response)
         script_urls = doc.css('script[src]').map { |script| script['src'] }
 
-        scripts = parse_all_scripts ? script_urls : script_urls.select { |url| url.include?('_app-') }
-
-        scripts.each do |script_url|
+        script_urls.each do |script_url|
           url = script_url.start_with?('http') ? script_url : "#{BASE_URL}#{script_url}"
           script_content = make_get_request(url, headers)
           next unless script_content
 
           search_info = SearchInfo.new(script_content)
-          return search_info if (search_info.search_url && !search_info.search_url.empty?) || (search_info.api_key && !search_info.api_key.empty?)
+          # Only return on a search_url match — an api_key without a search_url
+          # leaves us with no idea where to POST, and the loop should keep
+          # looking for a chunk that gives us the endpoint.
+          return search_info if search_info.search_url && !search_info.search_url.empty?
         end
 
         nil

@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - None
 
+## [0.2.4] - 2026-05-07
+
+### Fixed
+- HLTB renamed the search endpoint from `/api/finder` to `/api/bleed`. Runtime discovery already adapted, but the hardcoded fallbacks didn't — refresh `SEARCH_URL`, the default in `fetch_search_token`, and the candidate list to put `/api/bleed` first.
+
+### Changed
+- Drop the `_app-*.js` script-name filter in `send_website_request_getcode`. The modern HLTB build (Turbopack) ships chunks with opaque names like `0-~-0up.q3_p0.js`, so the filter never matched and forced every search through a redundant retry. Single-pass discovery now iterates all `<script src>` tags directly.
+- `send_website_request_getcode` only returns when a `search_url` is found; finding only an `api_key` no longer short-circuits the loop.
+
 ## [0.2.3] - 2026-04-15
 
 ### Fixed
