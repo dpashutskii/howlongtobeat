@@ -1,6 +1,7 @@
 # HowLongToBeat Ruby API
 
 ![CI](https://github.com/dpashutskii/howlongtobeat/actions/workflows/ci.yml/badge.svg)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/dpashutskii)
 
 A simple Ruby API to read data from howlongtobeat.com.
 
