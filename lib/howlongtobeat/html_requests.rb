@@ -8,10 +8,11 @@ module HowLongToBeat
     BASE_URL = 'https://howlongtobeat.com'
     REFERER_HEADER = BASE_URL
     GAME_URL = "#{BASE_URL}/game"
-    # HLTB renames this endpoint periodically (most recent: /api/find -> /api/finder -> /api/bleed).
+    # HLTB renames this endpoint periodically
+    # (most recent: /api/find -> /api/finder -> /api/bleed -> /api/search/site).
     # The runtime discovery in `send_website_request_getcode` is the source of truth;
     # this constant is the fallback when discovery fails.
-    SEARCH_URL = "#{BASE_URL}/api/bleed"
+    SEARCH_URL = "#{BASE_URL}/api/search/site"
 
     class SearchModifiers
       NONE = ""
@@ -24,10 +25,23 @@ module HowLongToBeat
     class SearchInfo
       attr_accessor :search_url, :api_key
 
+      # A POST fetch to /api/... whose request options mention x-auth-token.
+      # This is the signature of the search call and distinguishes it from
+      # other POST fetches in the bundle (e.g. /api/error).
+      AUTHENTICATED_FETCH_MARKER = /x-auth-token/i
+
       def initialize(script_content)
         @api_key = extract_api_from_script(script_content)
+        @authenticated = false
         @search_url = extract_search_url_script(script_content)
         @search_url = @search_url&.strip&.gsub(/^\/+|\/+$/, '')
+      end
+
+      # True when the discovered search_url came from a fetch that sends
+      # x-auth-token. Callers use this to prefer the real search endpoint over
+      # any other POST fetch found in an earlier script.
+      def authenticated?
+        @authenticated
       end
 
       private
@@ -51,13 +65,21 @@ module HowLongToBeat
 
       def extract_search_url_script(script_content)
         # Prefer the search endpoint used in POST fetch calls, which is more stable
-        # than hardcoding "/api/search" and works with variants like "/api/finder"
-        # and "/api/bleed" (current as of 2026-05).
-        post_fetch_pattern = /fetch\s*\(\s*["']\/api\/([a-zA-Z0-9_\/-]+)[^"']*["']\s*,\s*{[^}]*method:\s*["']POST["'][^}]*}/mi
-        if (match = script_content.match(post_fetch_pattern))
-          path_suffix = match[1]
-          base_path = path_suffix.include?('/') ? path_suffix.split('/').first : path_suffix
-          return "/api/#{base_path}"
+        # than hardcoding "/api/search" and works with variants like "/api/finder",
+        # "/api/bleed" and nested paths like "/api/search/site" (current as of
+        # 2026-09). The full path is kept verbatim: truncating to the first
+        # segment turned "/api/search/site" into "/api/search", which 404s.
+        post_fetch_pattern = /fetch\s*\(\s*["']\/api\/([a-zA-Z0-9_\/-]+)[^"']*["']\s*,\s*({[^}]*method:\s*["']POST["'][^}]*})/mi
+        matches = script_content.to_enum(:scan, post_fetch_pattern).map { Regexp.last_match }
+        unless matches.empty?
+          # A single chunk can contain several POST fetches; the search one is
+          # the one that sends x-auth-token. Fall back to the first POST fetch
+          # so a header rename doesn't leave us with nothing.
+          match = matches.find { |m| m[2].match?(AUTHENTICATED_FETCH_MARKER) }
+          @authenticated = !match.nil?
+          match ||= matches.first
+          path_suffix = match[1].sub(%r{/+\z}, '')
+          return "/api/#{path_suffix}"
         end
 
         # Legacy fallback for previous script shape using .concat(...)
@@ -182,7 +204,7 @@ module HowLongToBeat
 
       def fetch_search_token(parsed_search_url = nil)
         base_endpoint = parsed_search_url.to_s.strip
-        base_endpoint = '/api/bleed' if base_endpoint.empty?
+        base_endpoint = '/api/search/site' if base_endpoint.empty?
         base_endpoint = "/#{base_endpoint}" unless base_endpoint.start_with?('/')
         base_endpoint = base_endpoint.sub(%r{/+\z}, '')
         base_endpoint = base_endpoint.sub(%r{/init\z}, '')
@@ -218,7 +240,7 @@ module HowLongToBeat
         candidates = []
         candidates << preferred unless preferred.empty?
         # Known historical endpoints, newest first. HLTB rotates this name periodically.
-        candidates.concat(['/api/bleed', '/api/finder', '/api/search', '/api/s'])
+        candidates.concat(['/api/search/site', '/api/bleed', '/api/finder', '/api/search', '/api/s'])
 
         normalized = candidates.map do |endpoint|
           next nil if endpoint.nil? || endpoint.strip.empty?
@@ -234,8 +256,12 @@ module HowLongToBeat
       # contains a `fetch("/api/<name>", { method: "POST" })` call. HLTB used to
       # bundle the relevant code under `_app-*.js`, but the modern (Turbopack)
       # build emits opaque chunk names like `0-~-0up.q3_p0.js`, so a name-based
-      # filter is no longer reliable — we just iterate and stop on the first
-      # script that yields a `search_url`.
+      # filter is no longer reliable — we iterate every script.
+      #
+      # The bundle also contains unrelated POST fetches (e.g. `/api/error`), and
+      # chunk order is not stable, so we stop on the first chunk whose POST fetch
+      # sends `x-auth-token` (the search call's signature) and only fall back to
+      # the first plain POST fetch if no chunk is authenticated.
       def send_website_request_getcode
         headers = get_title_request_headers
         response = make_get_request(BASE_URL, headers)
@@ -244,19 +270,22 @@ module HowLongToBeat
         doc = Nokogiri::HTML(response)
         script_urls = doc.css('script[src]').map { |script| script['src'] }
 
+        fallback = nil
         script_urls.each do |script_url|
           url = script_url.start_with?('http') ? script_url : "#{BASE_URL}#{script_url}"
           script_content = make_get_request(url, headers)
           next unless script_content
 
           search_info = SearchInfo.new(script_content)
-          # Only return on a search_url match — an api_key without a search_url
-          # leaves us with no idea where to POST, and the loop should keep
-          # looking for a chunk that gives us the endpoint.
-          return search_info if search_info.search_url && !search_info.search_url.empty?
+          # Only consider a search_url match — an api_key without a search_url
+          # leaves us with no idea where to POST.
+          next unless search_info.search_url && !search_info.search_url.empty?
+
+          return search_info if search_info.authenticated?
+          fallback ||= search_info
         end
 
-        nil
+        fallback
       end
 
       def get_title_request_headers

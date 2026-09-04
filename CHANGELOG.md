@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - None
 
+## [0.2.5] - 2026-09-04
+
+### Fixed
+- HLTB moved the search endpoint from `/api/bleed` to the nested path `/api/search/site` (around 2026-08-26). Runtime discovery matched the new `fetch("/api/search/site", { method: "POST" })` call but truncated it to the first path segment (`/api/search`), whose `/init` returns 404. Every search and `search_from_id` returned `nil`. The full path is now kept verbatim (mirrors Python package fix for ScrappyCocco/HowLongToBeat-PythonAPI#59).
+- Refresh the hardcoded fallbacks (`SEARCH_URL`, the `fetch_search_token` default, and the candidate list) to put `/api/search/site` first.
+
+### Changed
+- Discovery now prefers the POST fetch that sends `x-auth-token` (the search call's signature). The HLTB bundle also contains an unrelated `fetch("/api/error", { method: "POST" })` chunk and chunk order is not stable, so stopping on the first POST fetch could pick the wrong endpoint. `SearchInfo#authenticated?` exposes the distinction; a plain POST fetch is still used as a last resort.
+
 ## [0.2.4] - 2026-05-07
 
 ### Fixed
