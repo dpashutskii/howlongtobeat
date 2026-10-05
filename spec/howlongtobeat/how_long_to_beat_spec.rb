@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-RSpec.describe HowLongToBeat::HowLongToBeat do
+RSpec.describe HowLongToBeat::HowLongToBeat, :live do
   let(:hltb) { described_class.new }
   let(:hltb_no_filter) { described_class.new(0.0) }
   let(:hltb_strict) { described_class.new(0.7) }
