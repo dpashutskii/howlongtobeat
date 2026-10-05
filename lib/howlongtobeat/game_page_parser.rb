@@ -4,15 +4,17 @@ module HowLongToBeat
   # Reads the record Next.js embeds in every /game/<id> page, so refreshing
   # a known game takes one GET and no search or auth token.
   module GamePageParser
-    NEXT_DATA = %r{<script id="__NEXT_DATA__" type="application/json">(.*?)</script>}m
+    NEXT_DATA = %r{<script[^>]*\bid="__NEXT_DATA__"[^>]*>(.*?)</script>}m
 
     module_function
 
     def parse(html)
-      json = html.to_s.dup.force_encoding(Encoding::UTF_8)[NEXT_DATA, 1]
+      encoded_html = html.to_s.dup.force_encoding(Encoding::UTF_8).scrub
+      json = encoded_html[NEXT_DATA, 1]
       raise ParseError, 'HLTB game page has no __NEXT_DATA__ script' unless json
 
-      game = JSON.parse(json).dig('props', 'pageProps', 'game', 'data', 'game')
+      data = JSON.parse(json)
+      game = data.dig('props', 'pageProps', 'game', 'data', 'game')
       game = game.first if game.is_a?(Array)
       raise ParseError, 'HLTB game page has no game record' unless game.is_a?(Hash) && game['game_id']
 
@@ -28,6 +30,8 @@ module HowLongToBeat
       )
     rescue JSON::ParserError => e
       raise ParseError, "HLTB game page JSON is invalid: #{e.message}"
+    rescue TypeError, NoMethodError => e
+      raise ParseError, "HLTB game page has unexpected structure: #{e.message}"
     end
   end
 end

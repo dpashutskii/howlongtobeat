@@ -12,6 +12,9 @@ module HowLongToBeat
       raise ParseError, 'HLTB search response has no data array' unless games.is_a?(Array)
 
       games.map do |game|
+        raise ParseError, 'HLTB search response game row is not a dict' unless game.is_a?(Hash)
+        raise ParseError, 'HLTB search response game row has no game_id' unless game['game_id']
+
         SearchResult.new(
           id: game['game_id'].to_i,
           name: game['game_name'],
@@ -23,6 +26,8 @@ module HowLongToBeat
       end
     rescue JSON::ParserError => e
       raise ParseError, "HLTB search response is not JSON: #{e.message}"
+    rescue NoMethodError, TypeError => e
+      raise ParseError, "HLTB search response has unexpected structure: #{e.message}"
     end
   end
 end
