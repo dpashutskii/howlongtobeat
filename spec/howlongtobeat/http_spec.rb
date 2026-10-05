@@ -104,4 +104,15 @@ RSpec.describe HowLongToBeat::Http do
 
     expect(sleeps).to eq([2.0])
   end
+
+  it 'disables Net::HTTP max_retries to prevent unplaced retries' do
+    stub_request(:get, url).to_return(status: 200)
+
+    expect(Net::HTTP).to receive(:start).with(
+      'howlongtobeat.com', 443,
+      hash_including(max_retries: 0, open_timeout: 5, read_timeout: 10)
+    ).and_call_original
+
+    http.get(url)
+  end
 end

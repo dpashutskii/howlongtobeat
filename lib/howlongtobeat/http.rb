@@ -48,7 +48,10 @@ module HowLongToBeat
 
     def perform(uri, request)
       pace!
+      # Disable Net::HTTP's silent retry (max_retries: 1 by default) so every request,
+      # including automatic retries after transient errors, goes through pace!.
       response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https',
+                                                     max_retries: 0,
                                                      open_timeout: @open_timeout,
                                                      read_timeout: @read_timeout) do |connection|
         connection.request(request)
