@@ -31,7 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HowLongToBeat::Client`: a stateful client meant to be kept for the life of a process.
   - `#game(id)` reads a game with one request to its HLTB page. It returns a `GameDetail`: times in hours, release date, aliases and Steam app id.
   - `#search(title)` returns raw `SearchResult` rows; `#search_json(title)` returns the raw body.
-- Distinct errors: `RateLimitedError` (429), `RequestError` (network, timeout, 5xx, 403) and `ParseError` (unexpected page or response shape).
+- `HowLongToBeat::Client.default`: a lazily built, process-wide client. The legacy `HowLongToBeat::HowLongToBeat` API uses it unless you pass `client:`, so instances no longer each pay for a full endpoint discovery.
+- Distinct errors: `RateLimitedError` (429), `RequestError` (network, timeout, 5xx, 403, a 404 that is not HLTB's own; `#status` carries the HTTP status) and `ParseError` (unexpected page or response shape, a `/init` response without a token, or a search endpoint that cannot be found).
 
 ### Changed
 - Requests are paced: at least 2 seconds apart by default.

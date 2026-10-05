@@ -29,10 +29,10 @@ $ gem install howlongtobeat
 
 ### Client (recommended)
 
-Keep one `Client` per process. It paces requests (2 seconds apart by default) and caches the search endpoint and auth token. Errors are distinct, so "rate-limited" never looks like "not found".
+Keep one `Client` per process: use `HowLongToBeat::Client.default`, or build a single instance of your own. It paces requests (2 seconds apart by default) and caches the search endpoint and auth token, so every extra instance pays for its own endpoint discovery. Errors are distinct, so "rate-limited" never looks like "not found". The legacy `HowLongToBeat::HowLongToBeat` API uses `Client.default` unless you pass `client:`.
 
 ```ruby
-client = HowLongToBeat::Client.new
+client = HowLongToBeat::Client.default
 
 detail = client.game(10270)          # one request; nil if HLTB has no such game
 detail.main_story                    # => 51.68 (hours)

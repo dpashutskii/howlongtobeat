@@ -10,7 +10,7 @@ module HowLongToBeat
   # JSON content, and complexity flags stay unset. auto_filter_times does
   # not apply to search_from_id results.
   class HowLongToBeat
-    def initialize(input_minimum_similarity = 0.4, input_auto_filter_times = false, client: Client.new)
+    def initialize(input_minimum_similarity = 0.4, input_auto_filter_times = false, client: Client.default)
       @minimum_similarity = input_minimum_similarity
       @auto_filter_times = input_auto_filter_times
       @client = client

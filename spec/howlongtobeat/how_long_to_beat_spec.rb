@@ -166,6 +166,13 @@ RSpec.describe HowLongToBeat::HowLongToBeat, 'on top of Client' do
     expect(hltb.search('Haven')).to be_nil
   end
 
+  it 'shares the default client unless given one' do
+    allow(HowLongToBeat::Client).to receive(:default).and_return(client)
+    allow(client).to receive(:game).with(10270).and_return(detail)
+
+    expect(described_class.new.search_from_id(10270)).to have_attributes(game_id: 10270)
+  end
+
   it 'returns nil from search_from_id for non-numeric id' do
     # Spy on the client to verify no call is made for invalid IDs
     spy_client = spy(HowLongToBeat::Client)
@@ -173,5 +180,24 @@ RSpec.describe HowLongToBeat::HowLongToBeat, 'on top of Client' do
 
     expect(hltb_with_spy.search_from_id('abc')).to be_nil
     expect(spy_client).not_to have_received(:game)
+  end
+end
+
+RSpec.describe HowLongToBeat::Client, :live do
+  let(:client) { described_class.default }
+
+  it 'reads The Witcher 3 from its game page' do
+    detail = client.game(10270)
+
+    expect(detail.name).to include('Witcher')
+    expect(detail.main_story).to be_positive
+  end
+
+  it 'returns nil for a game HLTB deleted' do
+    expect(client.game(1122)).to be_nil
+  end
+
+  it 'searches for The Witcher 3' do
+    expect(client.search('The Witcher 3')).not_to be_empty
   end
 end

@@ -2,9 +2,10 @@ require 'json'
 require 'nokogiri'
 
 module HowLongToBeat
-  # Polite, stateful HLTB client. Keep one instance per process: it remembers
-  # the discovered search endpoint and the auth token, and its Http enforces
-  # a minimum gap between requests.
+  # Polite, stateful HLTB client. Keep one instance per process (Client.default
+  # is one): it remembers the discovered search endpoint and the auth token,
+  # and its Http enforces a minimum gap between requests. Safe to share
+  # between threads.
   class Client
     BASE_URL = Http::BASE_URL
 
@@ -17,7 +18,14 @@ module HowLongToBeat
     Endpoint = Struct.new(:path, :search_info, :found_at)
     Token = Struct.new(:auth, :issued_at)
     EndpointGone = Class.new(StandardError)
-    private_constant :Endpoint, :Token, :EndpointGone
+    DEFAULT_LOCK = Mutex.new
+    private_constant :Endpoint, :Token, :EndpointGone, :DEFAULT_LOCK
+
+    # The process-wide client, built on first use. Share it so every caller
+    # pays for one endpoint discovery and one paced stream of requests.
+    def self.default
+      DEFAULT_LOCK.synchronize { @default ||= new }
+    end
 
     def initialize(http: Http.new, endpoint_ttl: 3600, token_ttl: 60, token_warmup: 1.2,
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
@@ -30,6 +38,7 @@ module HowLongToBeat
       @sleeper = sleeper
       @endpoint = nil
       @token = nil
+      @lock = Mutex.new # guards @endpoint and @token; never held during the search POST
     end
 
     # One GET of the game page. nil only when HLTB's own 404 page says there
@@ -65,8 +74,10 @@ module HowLongToBeat
     private
 
     def post_search(title, modifier)
-      endpoint = current_endpoint
-      auth = current_token(endpoint)
+      endpoint, auth = @lock.synchronize do
+        current = current_endpoint
+        [current, current_token(current)]
+      end
       headers = HTMLRequests.get_search_request_headers(auth)
       body = HTMLRequests.get_search_request_data(title, modifier, 1, endpoint.search_info, auth)
       response = @http.post("#{BASE_URL}#{endpoint.path}", headers, body)
@@ -75,27 +86,32 @@ module HowLongToBeat
       response.body
     end
 
+    # Callers hold @lock, so the ivars are read once and updated without a race.
     def current_endpoint
-      return @endpoint if @endpoint && @clock.call - @endpoint.found_at < @endpoint_ttl
+      endpoint = @endpoint
+      return endpoint if endpoint && @clock.call - endpoint.found_at < @endpoint_ttl
 
       @token = nil
       @endpoint = discover
     end
 
     def forget_endpoint!
-      @endpoint = nil
-      @token = nil
+      @lock.synchronize do
+        @endpoint = nil
+        @token = nil
+      end
     end
 
     def current_token(endpoint)
-      return @token.auth if @token && @clock.call - @token.issued_at < @token_ttl
+      cached = @token
+      return cached.auth if cached && @clock.call - cached.issued_at < @token_ttl
 
       response = @http.get(init_url(endpoint.path))
       raise EndpointGone if response.code == 404
 
-      @token = Token.new(parse_auth(response.body), @clock.call)
+      @token = fresh = Token.new(parse_auth(response.body), @clock.call)
       @sleeper.call(@token_warmup)
-      @token.auth
+      fresh.auth
     end
 
     def init_url(path)

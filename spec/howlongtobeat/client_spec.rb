@@ -180,5 +180,25 @@ RSpec.describe HowLongToBeat::Client do
     it 'returns the raw body from search_json' do
       expect(client.search_json('Haven')).to eq(results_json)
     end
+
+    it 'discovers the endpoint and fetches the token once when two threads search a fresh client' do
+      stub_request(:get, base).to_return do
+        sleep 0.05 # let the second thread arrive while the first is still discovering
+        { status: 200, body: homepage }
+      end
+
+      results = Array.new(2) { Thread.new { client.search('Haven') } }.map(&:value)
+
+      expect(results.map { |rows| rows.map(&:id) }).to eq([[80569], [80569]])
+      expect(a_request(:get, base)).to have_been_made.once
+      expect(a_request(:get, init_url)).to have_been_made.once
+    end
+  end
+
+  describe '.default' do
+    it 'returns the same process-wide client every time' do
+      expect(described_class.default).to be_a(described_class)
+      expect(described_class.default).to be(described_class.default)
+    end
   end
 end
