@@ -1,36 +1,52 @@
 module HowLongToBeat
+  # The original API, kept for existing callers. It now runs on Client, so
+  # it shares the pacing, caching and error handling; any failure still
+  # returns nil, as before.
   class HowLongToBeat
-    def initialize(input_minimum_similarity = 0.4, input_auto_filter_times = false)
+    def initialize(input_minimum_similarity = 0.4, input_auto_filter_times = false, client: Client.new)
       @minimum_similarity = input_minimum_similarity
       @auto_filter_times = input_auto_filter_times
+      @client = client
     end
 
     def search(game_name, search_modifiers = HTMLRequests::SearchModifiers::NONE,
-              similarity_case_sensitive = true)
+               similarity_case_sensitive = true)
       return nil if game_name.nil? || game_name.empty?
 
-      html_result = HTMLRequests.send_web_request(game_name, search_modifiers)
-      return nil unless html_result
-
-      parse_web_result(game_name, html_result, nil, similarity_case_sensitive)
+      json = @client.search_json(game_name, modifier: search_modifiers)
+      parse_web_result(game_name, json, nil, similarity_case_sensitive)
+    rescue Error
+      nil
     end
 
     def search_from_id(game_id)
       return nil if game_id.nil? || game_id == 0
 
-      game_title = HTMLRequests.get_game_title(game_id)
-      return nil unless game_title
-
-      html_result = HTMLRequests.send_web_request(game_title)
-      return nil unless html_result
-
-      result_list = parse_web_result(game_title, html_result, game_id)
-      return nil unless result_list && result_list.size == 1
-
-      result_list.first
+      detail = @client.game(game_id)
+      detail && entry_from(detail)
+    rescue Error
+      nil
     end
 
     private
+
+    def entry_from(detail)
+      HowLongToBeatEntry.new.tap do |entry|
+        entry.game_id = detail.id
+        entry.game_name = detail.name
+        entry.game_alias = detail.aliases.join(', ')
+        entry.game_type = detail.game_type
+        entry.game_web_link = "#{JSONResultParser::GAME_URL_PREFIX}#{detail.id}"
+        entry.release_world = detail.release_year
+        entry.main_story = detail.main_story
+        entry.main_extra = detail.main_extra
+        entry.completionist = detail.completionist
+        entry.all_styles = detail.all_styles
+        entry.coop_time = detail.coop
+        entry.mp_time = detail.multiplayer
+        entry.similarity = 1.0
+      end
+    end
 
     def parse_web_result(game_name, html_result, game_id = nil, similarity_case_sensitive = true)
       parser = JSONResultParser.new(
