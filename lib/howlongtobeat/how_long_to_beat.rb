@@ -2,6 +2,13 @@ module HowLongToBeat
   # The original API, kept for existing callers. It now runs on Client, so
   # it shares the pacing, caching and error handling; any failure still
   # returns nil, as before.
+  #
+  # Note: search_from_id now builds entries from the game page only. It sets
+  # id, name, alias, type, web link, release year, and the six time fields
+  # (main_story, main_extra, completionist, all_styles, coop_time, mp_time)
+  # plus similarity (1.0). Image URL, review score, developer, platforms,
+  # JSON content, and complexity flags stay unset. auto_filter_times does
+  # not apply to search_from_id results.
   class HowLongToBeat
     def initialize(input_minimum_similarity = 0.4, input_auto_filter_times = false, client: Client.new)
       @minimum_similarity = input_minimum_similarity
@@ -14,6 +21,9 @@ module HowLongToBeat
       return nil if game_name.nil? || game_name.empty?
 
       json = @client.search_json(game_name, modifier: search_modifiers)
+      # Validate the shape first; SearchResultParser raises ParseError for any
+      # malformed response, which rescue Error below will turn into nil.
+      SearchResultParser.parse(json)
       parse_web_result(game_name, json, nil, similarity_case_sensitive)
     rescue Error
       nil
@@ -21,10 +31,13 @@ module HowLongToBeat
 
     def search_from_id(game_id)
       return nil if game_id.nil? || game_id == 0
+      # Validate the ID is numeric before calling the client; game_id is expected to be
+      # an integer, but Integer() will coerce strings like "123" and raise ArgumentError on "abc"
+      return nil unless game_id.is_a?(Integer) || (game_id.is_a?(String) && game_id.match?(/^\d+$/))
 
       detail = @client.game(game_id)
       detail && entry_from(detail)
-    rescue Error
+    rescue Error, ArgumentError
       nil
     end
 

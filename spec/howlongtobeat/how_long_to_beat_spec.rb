@@ -153,4 +153,25 @@ RSpec.describe HowLongToBeat::HowLongToBeat, 'on top of Client' do
 
     expect(hltb.search_from_id(10270)).to be_nil
   end
+
+  it 'returns nil from search when search_json returns malformed HTML' do
+    allow(client).to receive(:search_json).with('Haven', modifier: '').and_return('<html>nope</html>')
+
+    expect(hltb.search('Haven')).to be_nil
+  end
+
+  it 'returns nil from search when search_json returns wrong shape' do
+    allow(client).to receive(:search_json).with('Haven', modifier: '').and_return({ data: [1] }.to_json)
+
+    expect(hltb.search('Haven')).to be_nil
+  end
+
+  it 'returns nil from search_from_id for non-numeric id' do
+    # Spy on the client to verify no call is made for invalid IDs
+    spy_client = spy(HowLongToBeat::Client)
+    hltb_with_spy = described_class.new(0.4, client: spy_client)
+
+    expect(hltb_with_spy.search_from_id('abc')).to be_nil
+    expect(spy_client).not_to have_received(:game)
+  end
 end
