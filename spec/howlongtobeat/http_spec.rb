@@ -36,6 +36,22 @@ RSpec.describe HowLongToBeat::Http do
     expect { http.get(url) }.to raise_error(HowLongToBeat::RequestError, /503/)
   end
 
+  it 'carries the HTTP status on RequestError' do
+    stub_request(:get, url).to_return(status: 503)
+
+    expect { http.get(url) }.to raise_error(HowLongToBeat::RequestError) { |error|
+      expect(error.status).to eq(503)
+    }
+  end
+
+  it 'leaves the status nil for a network failure' do
+    stub_request(:get, url).to_timeout
+
+    expect { http.get(url) }.to raise_error(HowLongToBeat::RequestError) { |error|
+      expect(error.status).to be_nil
+    }
+  end
+
   it 'raises RequestError on a 403' do
     stub_request(:get, url).to_return(status: 403)
 

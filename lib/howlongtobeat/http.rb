@@ -66,7 +66,7 @@ module HowLongToBeat
       raise RateLimitedError, "HLTB rate limited #{uri.path} (429)" if code == 429
       return Response.new(code, response.body.to_s) if (200..299).cover?(code) || code == 404
 
-      raise RequestError, "HLTB returned #{code} for #{uri.path}"
+      raise RequestError.new("HLTB returned #{code} for #{uri.path}", status: code)
     end
 
     def pace!

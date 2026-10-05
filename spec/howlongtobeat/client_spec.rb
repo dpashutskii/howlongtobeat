@@ -25,10 +25,19 @@ RSpec.describe HowLongToBeat::Client do
       expect(client.game('10270').id).to eq(10270)
     end
 
-    it 'returns nil when HLTB has no such game' do
-      stub_request(:get, "#{base}/game/1122").to_return(status: 404, body: 'Not Found')
+    it "returns nil when HLTB's own 404 page says there is no such game" do
+      not_found = '<script id="__NEXT_DATA__" type="application/json">{"props":{},"page":"/404"}</script>'
+      stub_request(:get, "#{base}/game/1122").to_return(status: 404, body: not_found)
 
       expect(client.game(1122)).to be_nil
+    end
+
+    it 'raises RequestError with the status for a 404 that is not the HLTB not-found page' do
+      stub_request(:get, "#{base}/game/1122").to_return(status: 404, body: '<html>Not Found</html>')
+
+      expect { client.game(1122) }.to raise_error(HowLongToBeat::RequestError) { |error|
+        expect(error.status).to eq(404)
+      }
     end
 
     it 'raises RateLimitedError on 429' do
@@ -142,10 +151,10 @@ RSpec.describe HowLongToBeat::Client do
       expect(client.search('Haven').map(&:id)).to eq([80569])
     end
 
-    it 'raises RequestError when the endpoint still 404s after rediscovery' do
+    it 'raises ParseError when the endpoint still 404s after rediscovery' do
       stub_request(:post, "#{base}/api/search/site").to_return(status: 404)
 
-      expect { client.search('Haven') }.to raise_error(HowLongToBeat::RequestError, /404/)
+      expect { client.search('Haven') }.to raise_error(HowLongToBeat::ParseError, /404/)
     end
 
     it 'falls back to known endpoint names when no chunk is the search call' do
@@ -154,11 +163,18 @@ RSpec.describe HowLongToBeat::Client do
       expect(client.search('Haven').size).to eq(1)
     end
 
-    it 'raises RequestError when no endpoint can be found' do
+    it 'raises ParseError when no endpoint can be found' do
       stub_request(:get, base).to_return(status: 200, body: '<html></html>')
       stub_request(:get, %r{/api/.+/init}).to_return(status: 404)
 
-      expect { client.search('Haven') }.to raise_error(HowLongToBeat::RequestError, /discover/)
+      expect { client.search('Haven') }.to raise_error(HowLongToBeat::ParseError, /discover/)
+    end
+
+    it 'raises ParseError and sends no search when /init has no token' do
+      stub_request(:get, init_url).to_return(status: 200, body: '{"error":"x"}')
+
+      expect { client.search('Haven') }.to raise_error(HowLongToBeat::ParseError, /no token/)
+      expect(a_request(:post, "#{base}/api/search/site")).not_to have_been_made
     end
 
     it 'returns the raw body from search_json' do

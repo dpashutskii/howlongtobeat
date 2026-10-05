@@ -11,6 +11,9 @@ module HowLongToBeat
     # Tried in order only when no script chunk reveals the search endpoint.
     KNOWN_SEARCH_PATHS = %w[/api/search/site /api/bleed /api/finder /api/search /api/s].freeze
 
+    # HLTB's own Next.js 404 page embeds this in its __NEXT_DATA__.
+    NOT_FOUND_MARKER = '"page":"/404"'.freeze
+
     Endpoint = Struct.new(:path, :search_info, :found_at)
     Token = Struct.new(:auth, :issued_at)
     EndpointGone = Class.new(StandardError)
@@ -29,10 +32,15 @@ module HowLongToBeat
       @token = nil
     end
 
-    # One GET of the game page. nil when HLTB has no such game (404).
+    # One GET of the game page. nil only when HLTB's own 404 page says there
+    # is no such game; any other 404 (a CDN or proxy page) is a RequestError.
     def game(id)
       response = @http.get("#{BASE_URL}/game/#{Integer(id)}")
-      return nil if response.code == 404
+      if response.code == 404
+        return nil if response.body.include?(NOT_FOUND_MARKER)
+
+        raise RequestError.new("HLTB returned an unrecognised 404 for /game/#{id}", status: 404)
+      end
 
       GamePageParser.parse(response.body)
     end
@@ -50,7 +58,7 @@ module HowLongToBeat
       begin
         post_search(title, modifier)
       rescue EndpointGone
-        raise RequestError, 'HLTB search endpoint returns 404 even after rediscovery'
+        raise ParseError, 'HLTB search endpoint returns 404 even after rediscovery'
       end
     end
 
@@ -99,6 +107,8 @@ module HowLongToBeat
       raise ParseError, 'HLTB /init response is not an object' unless json.is_a?(Hash)
 
       token = json['token'] || json.dig('data', 'token') || json['auth_token'] || json['authToken']
+      raise ParseError, 'HLTB /init response has no token' if token.to_s.empty?
+
       key = json.find { |name, _| name.downcase.include?('key') }&.last
       value = json.find { |name, _| name.downcase.include?('val') }&.last
       HTMLRequests::AuthStruct.new(token, key, value)
@@ -136,7 +146,7 @@ module HowLongToBeat
         return Endpoint.new(path, nil, @clock.call) if @http.get(init_url(path)).code == 200
       end
 
-      raise RequestError, 'Could not discover the HLTB search endpoint'
+      raise ParseError, 'Could not discover the HLTB search endpoint'
     end
   end
 end
