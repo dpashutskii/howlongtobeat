@@ -25,6 +25,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - None
 
+## [0.3.0] - 2026-10-05
+
+### Added
+- `HowLongToBeat::Client`: a stateful client meant to be kept for the life of a process.
+  - `#game(id)` reads a game with one request to its HLTB page. It returns a `GameDetail`: times in hours, release date, aliases and Steam app id.
+  - `#search(title)` returns raw `SearchResult` rows; `#search_json(title)` returns the raw body.
+- Distinct errors: `RateLimitedError` (429), `RequestError` (network, timeout, 5xx, 403) and `ParseError` (unexpected page or response shape).
+
+### Changed
+- Requests are paced: at least 2 seconds apart by default.
+- The search endpoint is cached for an hour and the `/init` token for 60 seconds, with a 1.2 second pause before the first search with a new token.
+- HowLongToBeat started answering 429 to bursts in late September 2026.
+- `HowLongToBeat#search` and `#search_from_id` now run on `Client`. `search_from_id` takes one request instead of about eight.
+- One current, fixed browser User-Agent.
+- Explicit 5-second connect and 10-second read timeouts.
+- `HowLongToBeat#search_from_id` now builds its entry from the game page: it sets id, name, alias, type, web link, release year, the six times and similarity (1.0); image URL, review score, developer, platforms, JSON content and complexity flags stay unset, and `auto_filter_times` no longer applies to it.
+
+### Removed
+- After a 429 the client no longer cycles through retired endpoints.
+- The fallback that disabled SSL certificate verification is gone (applies to the new client).
+
+### Fixed
+- `HowLongToBeat#search` and `#search_from_id` return nil for malformed responses and non-numeric ids instead of raising.
+
 ## [0.2.5] - 2026-09-04
 
 ### Fixed

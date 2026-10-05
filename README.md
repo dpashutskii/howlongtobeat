@@ -27,6 +27,26 @@ $ gem install howlongtobeat
 
 ## Usage
 
+### Client (recommended)
+
+Keep one `Client` per process. It paces requests (2 seconds apart by default) and caches the search endpoint and auth token. Errors are distinct, so "rate-limited" never looks like "not found".
+
+```ruby
+client = HowLongToBeat::Client.new
+
+detail = client.game(10270)          # one request; nil if HLTB has no such game
+detail.main_story                    # => 51.68 (hours)
+detail.steam_app_id                  # => 292030
+
+begin
+  client.search("The Witcher 3")     # => [HowLongToBeat::SearchResult, ...]; [] when nothing matches
+rescue HowLongToBeat::RateLimitedError
+  # HLTB answered 429: back off before trying again
+end
+```
+
+HowLongToBeat has no official API and rate-limits bursts. Please keep the default pacing.
+
 ### Basic Search
 
 ```ruby
