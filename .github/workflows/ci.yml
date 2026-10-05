@@ -20,5 +20,7 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
+      # The live specs hit howlongtobeat.com and are rate-limited; run them
+      # locally before a release (bundle exec rspec --tag live).
       - name: Run tests
-        run: bundle exec rspec
+        run: bundle exec rspec --tag '~live'
