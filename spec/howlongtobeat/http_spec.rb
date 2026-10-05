@@ -70,6 +70,12 @@ RSpec.describe HowLongToBeat::Http do
     expect { http.get(url) }.to raise_error(HowLongToBeat::RequestError, /failed/)
   end
 
+  it 'raises RequestError when the body cannot be decompressed' do
+    stub_request(:get, url).to_raise(Zlib::DataError.new('incorrect header check'))
+
+    expect { http.get(url) }.to raise_error(HowLongToBeat::RequestError, /Zlib::DataError/)
+  end
+
   it 'sends the fixed browser User-Agent' do
     stub_request(:get, url).to_return(status: 200)
 

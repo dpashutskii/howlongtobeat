@@ -97,6 +97,15 @@ RSpec.describe HowLongToBeat::SearchResultParser do
     )
   end
 
+  it 'scrubs an invalid byte in a row instead of keeping a broken string' do
+    broken = "{\"data\":[{\"game_id\":1,\"game_name\":\"Caf\xE9 Haven\"}]}".b
+
+    results = described_class.parse(broken)
+
+    expect(results.first.name).to be_valid_encoding
+    expect(results.first.name).to start_with('Caf')
+  end
+
   it 'returns an empty array when HLTB found nothing' do
     expect(described_class.parse({ data: [] }.to_json)).to eq([])
   end

@@ -7,7 +7,7 @@ module HowLongToBeat
     module_function
 
     def parse(json)
-      payload = JSON.parse(json.to_s.dup.force_encoding(Encoding::UTF_8))
+      payload = JSON.parse(json.to_s.dup.force_encoding(Encoding::UTF_8).scrub)
       games = payload['data'] if payload.is_a?(Hash)
       raise ParseError, 'HLTB search response has no data array' unless games.is_a?(Array)
 

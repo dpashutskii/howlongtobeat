@@ -33,7 +33,7 @@ module HowLongToBeat
       return nil if game_id.nil? || game_id == 0
       # Validate the ID is numeric before calling the client; game_id is expected to be
       # an integer, but Integer() will coerce strings like "123" and raise ArgumentError on "abc"
-      return nil unless game_id.is_a?(Integer) || (game_id.is_a?(String) && game_id.match?(/^\d+$/))
+      return nil unless game_id.is_a?(Integer) || (game_id.is_a?(String) && game_id.match?(/\A\d+\z/))
 
       detail = @client.game(game_id)
       detail && entry_from(detail)

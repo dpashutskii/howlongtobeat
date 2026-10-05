@@ -44,7 +44,7 @@ module HowLongToBeat
     # One GET of the game page. nil only when HLTB's own 404 page says there
     # is no such game; any other 404 (a CDN or proxy page) is a RequestError.
     def game(id)
-      response = @http.get("#{BASE_URL}/game/#{Integer(id)}")
+      response = @http.get("#{BASE_URL}/game/#{Integer(id.to_s, 10)}")
       if response.code == 404
         return nil if response.body.include?(NOT_FOUND_MARKER)
 
@@ -109,7 +109,13 @@ module HowLongToBeat
       response = @http.get(init_url(endpoint.path))
       raise EndpointGone if response.code == 404
 
-      @token = fresh = Token.new(parse_auth(response.body), @clock.call)
+      store_token(response.body)
+    end
+
+    # Parses an /init body, caches the token, and gives HLTB a moment to
+    # accept it before the first search.
+    def store_token(body)
+      @token = fresh = Token.new(parse_auth(body), @clock.call)
       @sleeper.call(@token_warmup)
       fresh.auth
     end
@@ -159,7 +165,11 @@ module HowLongToBeat
 
     def fallback_endpoint
       KNOWN_SEARCH_PATHS.each do |path|
-        return Endpoint.new(path, nil, @clock.call) if @http.get(init_url(path)).code == 200
+        response = @http.get(init_url(path))
+        next unless response.code == 200
+
+        store_token(response.body) # the probe already fetched /init; don't fetch it again
+        return Endpoint.new(path, nil, @clock.call)
       end
 
       raise ParseError, 'Could not discover the HLTB search endpoint'

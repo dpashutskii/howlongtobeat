@@ -1,6 +1,7 @@
 require 'net/http'
 require 'openssl'
 require 'uri'
+require 'zlib'
 
 module HowLongToBeat
   # Paced HTTP transport for HLTB. Every request waits until at least
@@ -17,7 +18,7 @@ module HowLongToBeat
 
     NETWORK_ERRORS = [
       Timeout::Error, IOError, EOFError, SocketError, SystemCallError,
-      OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Net::ProtocolError
+      OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Net::ProtocolError, Zlib::Error
     ].freeze
 
     def initialize(min_interval: 2.0, open_timeout: 5, read_timeout: 10,

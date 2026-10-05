@@ -25,6 +25,13 @@ RSpec.describe HowLongToBeat::Client do
       expect(client.game('10270').id).to eq(10270)
     end
 
+    it 'reads a zero-padded string id as decimal' do
+      stub_request(:get, "#{base}/game/10270").to_return(status: 200, body: game_page)
+
+      expect(client.game('010270').id).to eq(10270)
+      expect(a_request(:get, "#{base}/game/10270")).to have_been_made.once
+    end
+
     it "returns nil when HLTB's own 404 page says there is no such game" do
       not_found = '<script id="__NEXT_DATA__" type="application/json">{"props":{},"page":"/404"}</script>'
       stub_request(:get, "#{base}/game/1122").to_return(status: 404, body: not_found)
@@ -133,10 +140,19 @@ RSpec.describe HowLongToBeat::Client do
       expect(a_request(:get, %r{/api/bleed/init})).not_to have_been_made
     end
 
-    it 'raises RateLimitedError on a 429 from the search itself' do
+    it 'raises RateLimitedError on a 429 from the search itself and makes no further requests' do
       stub_request(:post, "#{base}/api/search/site").to_return(status: 429)
 
       expect { client.search('Haven') }.to raise_error(HowLongToBeat::RateLimitedError)
+      expect(a_request(:post, "#{base}/api/search/site")).to have_been_made.once
+      expect(a_request(:get, base)).to have_been_made.once
+    end
+
+    it 'raises RateLimitedError on a 429 from the homepage without probing fallback endpoints' do
+      stub_request(:get, base).to_return(status: 429)
+
+      expect { client.search('Haven') }.to raise_error(HowLongToBeat::RateLimitedError)
+      expect(a_request(:get, %r{/init})).not_to have_been_made
     end
 
     it 'rediscovers once when the search endpoint starts returning 404' do
@@ -161,6 +177,16 @@ RSpec.describe HowLongToBeat::Client do
       stub_request(:get, base).to_return(status: 200, body: '<html></html>')
 
       expect(client.search('Haven').size).to eq(1)
+    end
+
+    it 'keeps the token from the fallback probe instead of fetching /init twice' do
+      stub_request(:get, base).to_return(status: 200, body: '<html></html>')
+
+      client.search('Haven')
+
+      expect(a_request(:get, init_url)).to have_been_made.once
+      expect(a_request(:post, "#{base}/api/search/site").with(headers: { 'x-auth-token' => 'tok' })).to have_been_made
+      expect(sleeps).to include(1.2)
     end
 
     it 'raises ParseError when no endpoint can be found' do

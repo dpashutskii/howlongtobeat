@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-10-05
 
+HowLongToBeat started answering 429 to bursts of requests in late September 2026, which is why this release paces them.
+
 ### Added
 - `HowLongToBeat::Client`: a stateful client meant to be kept for the life of a process.
   - `#game(id)` reads a game with one request to its HLTB page. It returns a `GameDetail`: times in hours, release date, aliases and Steam app id.
@@ -37,11 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Requests are paced: at least 2 seconds apart by default.
 - The search endpoint is cached for an hour and the `/init` token for 60 seconds, with a 1.2 second pause before the first search with a new token.
-- HowLongToBeat started answering 429 to bursts in late September 2026.
 - `HowLongToBeat#search` and `#search_from_id` now run on `Client`. `search_from_id` takes one request instead of about eight.
 - One current, fixed browser User-Agent.
 - Explicit 5-second connect and 10-second read timeouts.
 - `HowLongToBeat#search_from_id` now builds its entry from the game page: it sets id, name, alias, type, web link, release year, the six times and similarity (1.0); image URL, review score, developer, platforms, JSON content and complexity flags stay unset, and `auto_filter_times` no longer applies to it.
+
+### Deprecated
+- The public `HTMLRequests.send_web_request` and `HTMLRequests.get_game_title` are unpaced legacy helpers. Use `Client` instead.
 
 ### Removed
 - After a 429 the client no longer cycles through retired endpoints.

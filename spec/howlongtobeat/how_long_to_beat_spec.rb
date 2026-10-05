@@ -173,6 +173,13 @@ RSpec.describe HowLongToBeat::HowLongToBeat, 'on top of Client' do
     expect(described_class.new.search_from_id(10270)).to have_attributes(game_id: 10270)
   end
 
+  it 'returns nil from search_from_id for an id with a trailing newline' do
+    spy_client = spy(HowLongToBeat::Client)
+
+    expect(described_class.new(0.4, client: spy_client).search_from_id("123\n")).to be_nil
+    expect(spy_client).not_to have_received(:game)
+  end
+
   it 'returns nil from search_from_id for non-numeric id' do
     # Spy on the client to verify no call is made for invalid IDs
     spy_client = spy(HowLongToBeat::Client)
