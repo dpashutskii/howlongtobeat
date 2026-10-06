@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-RSpec.describe HowLongToBeat::HowLongToBeat do
+RSpec.describe HowLongToBeat::HowLongToBeat, :live do
   let(:hltb) { described_class.new }
   let(:hltb_no_filter) { described_class.new(0.0) }
   let(:hltb_strict) { described_class.new(0.7) }
@@ -97,5 +97,114 @@ RSpec.describe HowLongToBeat::HowLongToBeat do
         expect(hltb.search_from_id(999999999)).to be_nil
       end
     end
+  end
+end
+
+RSpec.describe HowLongToBeat::HowLongToBeat, 'on top of Client' do
+  let(:client) { instance_double(HowLongToBeat::Client) }
+  let(:hltb) { described_class.new(0.4, client: client) }
+  let(:detail) do
+    HowLongToBeat::GameDetail.new(
+      id: 10270, name: 'The Witcher 3: Wild Hunt', aliases: ['The Witcher III'], release_date: Date.new(2015, 5, 19),
+      release_year: 2015, steam_app_id: 292030, game_type: 'game', main_story: 51.68, main_extra: 103.76,
+      completionist: 175.27, all_styles: 104.41, coop: nil, multiplayer: nil
+    )
+  end
+
+  it 'filters search results by similarity like before' do
+    json = { data: [{ game_id: 1, game_name: 'Haven' }, { game_id: 2, game_name: 'Completely Different' }] }.to_json
+    allow(client).to receive(:search_json).with('Haven', modifier: '').and_return(json)
+
+    expect(hltb.search('Haven').map(&:game_id)).to eq([1])
+  end
+
+  it 'passes search modifiers through' do
+    allow(client).to receive(:search_json).with('Haven', modifier: 'hide_dlc').and_return({ data: [] }.to_json)
+
+    expect(hltb.search('Haven', HowLongToBeat::HTMLRequests::SearchModifiers::HIDE_DLC)).to eq([])
+  end
+
+  it 'returns nil from search when HLTB rate-limits' do
+    allow(client).to receive(:search_json).and_raise(HowLongToBeat::RateLimitedError)
+
+    expect(hltb.search('Haven')).to be_nil
+  end
+
+  it 'builds search_from_id from the game page in one request' do
+    allow(client).to receive(:game).with(10270).and_return(detail)
+
+    entry = hltb.search_from_id(10270)
+
+    expect(entry).to have_attributes(
+      game_id: 10270, game_name: 'The Witcher 3: Wild Hunt', game_alias: 'The Witcher III',
+      release_world: 2015, main_story: 51.68, completionist: 175.27, similarity: 1.0,
+      game_web_link: 'https://howlongtobeat.com/game/10270'
+    )
+  end
+
+  it 'returns nil from search_from_id for a missing game' do
+    allow(client).to receive(:game).with(999).and_return(nil)
+
+    expect(hltb.search_from_id(999)).to be_nil
+  end
+
+  it 'returns nil from search_from_id on a request error' do
+    allow(client).to receive(:game).and_raise(HowLongToBeat::RequestError)
+
+    expect(hltb.search_from_id(10270)).to be_nil
+  end
+
+  it 'returns nil from search when search_json returns malformed HTML' do
+    allow(client).to receive(:search_json).with('Haven', modifier: '').and_return('<html>nope</html>')
+
+    expect(hltb.search('Haven')).to be_nil
+  end
+
+  it 'returns nil from search when search_json returns wrong shape' do
+    allow(client).to receive(:search_json).with('Haven', modifier: '').and_return({ data: [1] }.to_json)
+
+    expect(hltb.search('Haven')).to be_nil
+  end
+
+  it 'shares the default client unless given one' do
+    allow(HowLongToBeat::Client).to receive(:default).and_return(client)
+    allow(client).to receive(:game).with(10270).and_return(detail)
+
+    expect(described_class.new.search_from_id(10270)).to have_attributes(game_id: 10270)
+  end
+
+  it 'returns nil from search_from_id for an id with a trailing newline' do
+    spy_client = spy(HowLongToBeat::Client)
+
+    expect(described_class.new(0.4, client: spy_client).search_from_id("123\n")).to be_nil
+    expect(spy_client).not_to have_received(:game)
+  end
+
+  it 'returns nil from search_from_id for non-numeric id' do
+    # Spy on the client to verify no call is made for invalid IDs
+    spy_client = spy(HowLongToBeat::Client)
+    hltb_with_spy = described_class.new(0.4, client: spy_client)
+
+    expect(hltb_with_spy.search_from_id('abc')).to be_nil
+    expect(spy_client).not_to have_received(:game)
+  end
+end
+
+RSpec.describe HowLongToBeat::Client, :live do
+  let(:client) { described_class.default }
+
+  it 'reads The Witcher 3 from its game page' do
+    detail = client.game(10270)
+
+    expect(detail.name).to include('Witcher')
+    expect(detail.main_story).to be_positive
+  end
+
+  it 'returns nil for a game HLTB deleted' do
+    expect(client.game(1122)).to be_nil
+  end
+
+  it 'searches for The Witcher 3' do
+    expect(client.search('The Witcher 3')).not_to be_empty
   end
 end

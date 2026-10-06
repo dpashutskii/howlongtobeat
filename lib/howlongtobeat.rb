@@ -1,9 +1,12 @@
 require_relative 'howlongtobeat/version'
+require_relative 'howlongtobeat/errors'
+require_relative 'howlongtobeat/http'
+require_relative 'howlongtobeat/records'
+require_relative 'howlongtobeat/fields'
+require_relative 'howlongtobeat/game_page_parser'
+require_relative 'howlongtobeat/search_result_parser'
 require_relative 'howlongtobeat/how_long_to_beat'
 require_relative 'howlongtobeat/how_long_to_beat_entry'
 require_relative 'howlongtobeat/html_requests'
 require_relative 'howlongtobeat/json_result_parser'
-
-module HowLongToBeat
-  class Error < StandardError; end
-end
+require_relative 'howlongtobeat/client'

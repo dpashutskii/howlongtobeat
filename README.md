@@ -27,6 +27,30 @@ $ gem install howlongtobeat
 
 ## Usage
 
+### Client (recommended)
+
+Keep one `Client` per process: use `HowLongToBeat::Client.default`, or build a single instance of your own. It paces requests (2 seconds apart by default) and caches the search endpoint and auth token, so every extra instance pays for its own endpoint discovery. Errors are distinct, so "rate-limited" never looks like "not found". The legacy `HowLongToBeat::HowLongToBeat` API uses `Client.default` unless you pass `client:`.
+
+```ruby
+client = HowLongToBeat::Client.default
+
+detail = client.game(10270)          # one request; nil if HLTB's 404 page says there is no such game
+detail.main_story                    # => 51.68 (hours)
+detail.steam_app_id                  # => 292030
+
+begin
+  client.search("The Witcher 3")     # => [HowLongToBeat::SearchResult, ...]; [] when nothing matches
+rescue HowLongToBeat::RateLimitedError
+  # HLTB answered 429: back off before trying again
+rescue HowLongToBeat::RequestError
+  # network failure, timeout or an HTTP error: retry later
+rescue HowLongToBeat::ParseError
+  # HLTB changed its site, so the gem needs an update
+end
+```
+
+HowLongToBeat has no official API and rate-limits bursts. Please keep the default pacing.
+
 ### Basic Search
 
 ```ruby
@@ -36,7 +60,7 @@ hltb = HowLongToBeat::HowLongToBeat.new
 results = hltb.search("The Witcher 3")
 ```
 
-The `search` method returns an array of possible games, or `nil` if no results were found or there was an error in the request.
+The `search` method returns an array of possible games (`[]` when nothing matches), or `nil` if the game name is empty or the request failed.
 
 Each result is an [`HowLongToBeatEntry`](https://github.com/dpashutskii/howlongtobeat/blob/main/lib/howlongtobeat/how_long_to_beat_entry.rb) object containing:
 
@@ -80,6 +104,8 @@ result = hltb.search_from_id(10270)  # The Witcher 3: Wild Hunt
 
 This returns a single [`HowLongToBeatEntry`](https://github.com/dpashutskii/howlongtobeat/blob/main/lib/howlongtobeat/how_long_to_beat_entry.rb) object or `nil` if not found.
 
+Since 0.3.0 `search_from_id` reads the game page in one request, so it fills fewer fields than before (no image URL, review score, developer, platforms, JSON content or complexity flags). See the [CHANGELOG](CHANGELOG.md) for the exact list.
+
 ### Search Modifiers
 
 You can filter your search results using modifiers:
@@ -116,7 +142,7 @@ This gem was originally created for and is being used by [SearchToPlay](https://
 
 ## Development
 
-After checking out the repo, run `bundle install` to install dependencies. Then, run `rake test` to run the tests.
+After checking out the repo, run `bundle install` to install dependencies. Then run `bundle exec rspec --tag '~live'` to run the offline tests. `rake spec` runs everything, including the `live` specs that call howlongtobeat.com (paced, about 3 minutes); run those with `bundle exec rspec --tag live` before a release.
 
 ## Contributing
 

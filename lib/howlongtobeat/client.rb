@@ -1,0 +1,178 @@
+require 'json'
+require 'nokogiri'
+
+module HowLongToBeat
+  # Polite, stateful HLTB client. Keep one instance per process (Client.default
+  # is one): it remembers the discovered search endpoint and the auth token,
+  # and its Http enforces a minimum gap between requests. Safe to share
+  # between threads.
+  class Client
+    BASE_URL = Http::BASE_URL
+
+    # Tried in order only when no script chunk reveals the search endpoint.
+    KNOWN_SEARCH_PATHS = %w[/api/search/site /api/bleed /api/finder /api/search /api/s].freeze
+
+    # HLTB's own Next.js 404 page embeds this in its __NEXT_DATA__.
+    NOT_FOUND_MARKER = '"page":"/404"'.freeze
+
+    Endpoint = Struct.new(:path, :search_info, :found_at)
+    Token = Struct.new(:auth, :issued_at)
+    EndpointGone = Class.new(StandardError)
+    DEFAULT_LOCK = Mutex.new
+    private_constant :Endpoint, :Token, :EndpointGone, :DEFAULT_LOCK
+
+    # The process-wide client, built on first use. Share it so every caller
+    # pays for one endpoint discovery and one paced stream of requests.
+    def self.default
+      DEFAULT_LOCK.synchronize { @default ||= new }
+    end
+
+    def initialize(http: Http.new, endpoint_ttl: 3600, token_ttl: 60, token_warmup: 1.2,
+                   clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
+                   sleeper: ->(seconds) { sleep(seconds) })
+      @http = http
+      @endpoint_ttl = endpoint_ttl
+      @token_ttl = token_ttl
+      @token_warmup = token_warmup
+      @clock = clock
+      @sleeper = sleeper
+      @endpoint = nil
+      @token = nil
+      @lock = Mutex.new # guards @endpoint and @token; never held during the search POST
+    end
+
+    # One GET of the game page. nil only when HLTB's own 404 page says there
+    # is no such game; any other 404 (a CDN or proxy page) is a RequestError.
+    def game(id)
+      response = @http.get("#{BASE_URL}/game/#{Integer(id.to_s, 10)}")
+      if response.code == 404
+        return nil if response.body.include?(NOT_FOUND_MARKER)
+
+        raise RequestError.new("HLTB returned an unrecognised 404 for /game/#{id}", status: 404)
+      end
+
+      GamePageParser.parse(response.body)
+    end
+
+    # Raw candidates for a title. [] is a genuine "not on HLTB".
+    def search(title, modifier: HTMLRequests::SearchModifiers::NONE)
+      SearchResultParser.parse(search_json(title, modifier: modifier))
+    end
+
+    # The raw search response body (the legacy API parses it itself).
+    def search_json(title, modifier: HTMLRequests::SearchModifiers::NONE)
+      post_search(title, modifier)
+    rescue EndpointGone
+      forget_endpoint!
+      begin
+        post_search(title, modifier)
+      rescue EndpointGone
+        raise ParseError, 'HLTB search endpoint returns 404 even after rediscovery'
+      end
+    end
+
+    private
+
+    def post_search(title, modifier)
+      endpoint, auth = @lock.synchronize do
+        current = current_endpoint
+        [current, current_token(current)]
+      end
+      headers = HTMLRequests.get_search_request_headers(auth)
+      body = HTMLRequests.get_search_request_data(title, modifier, 1, endpoint.search_info, auth)
+      response = @http.post("#{BASE_URL}#{endpoint.path}", headers, body)
+      raise EndpointGone if response.code == 404
+
+      response.body
+    end
+
+    # Callers hold @lock, so the ivars are read once and updated without a race.
+    def current_endpoint
+      endpoint = @endpoint
+      return endpoint if endpoint && @clock.call - endpoint.found_at < @endpoint_ttl
+
+      @token = nil
+      @endpoint = discover
+    end
+
+    def forget_endpoint!
+      @lock.synchronize do
+        @endpoint = nil
+        @token = nil
+      end
+    end
+
+    def current_token(endpoint)
+      cached = @token
+      return cached.auth if cached && @clock.call - cached.issued_at < @token_ttl
+
+      response = @http.get(init_url(endpoint.path))
+      raise EndpointGone if response.code == 404
+
+      store_token(response.body)
+    end
+
+    # Parses an /init body, caches the token, and gives HLTB a moment to
+    # accept it before the first search.
+    def store_token(body)
+      @token = fresh = Token.new(parse_auth(body), @clock.call)
+      @sleeper.call(@token_warmup)
+      fresh.auth
+    end
+
+    def init_url(path)
+      "#{BASE_URL}#{path}/init?t=#{Time.now.to_i}"
+    end
+
+    def parse_auth(body)
+      json = JSON.parse(body.to_s)
+      raise ParseError, 'HLTB /init response is not an object' unless json.is_a?(Hash)
+
+      token = json['token'] || json.dig('data', 'token') || json['auth_token'] || json['authToken']
+      raise ParseError, 'HLTB /init response has no token' if token.to_s.empty?
+
+      key = json.find { |name, _| name.downcase.include?('key') }&.last
+      value = json.find { |name, _| name.downcase.include?('val') }&.last
+      HTMLRequests::AuthStruct.new(token, key, value)
+    rescue JSON::ParserError => e
+      raise ParseError, "HLTB /init response is not JSON: #{e.message}"
+    end
+
+    # The search call is the POST fetch in HLTB's JS bundle that sends
+    # x-auth-token. Chunk names are opaque, so walk them in page order.
+    def discover
+      homepage = @http.get(BASE_URL)
+      raise RequestError, 'HLTB homepage returned 404' if homepage.code == 404
+
+      Nokogiri::HTML(homepage.body).css('script[src]').each do |script|
+        info = search_info_from(script['src'])
+        return Endpoint.new("/#{info.search_url}", info, @clock.call) if info
+      end
+
+      fallback_endpoint
+    end
+
+    def search_info_from(src)
+      url = src.start_with?('http') ? src : "#{BASE_URL}#{src}"
+      response = @http.get(url)
+      return nil unless response.code == 200
+
+      info = HTMLRequests::SearchInfo.new(response.body)
+      info if info.authenticated? && !info.search_url.to_s.empty?
+    rescue RequestError
+      nil # a redirected or broken chunk (e.g. the consent script) is not fatal
+    end
+
+    def fallback_endpoint
+      KNOWN_SEARCH_PATHS.each do |path|
+        response = @http.get(init_url(path))
+        next unless response.code == 200
+
+        store_token(response.body) # the probe already fetched /init; don't fetch it again
+        return Endpoint.new(path, nil, @clock.call)
+      end
+
+      raise ParseError, 'Could not discover the HLTB search endpoint'
+    end
+  end
+end
