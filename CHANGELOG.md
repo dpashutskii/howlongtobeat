@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - None
 
+## [0.4.0] - 2026-11-04
+
+### Removed
+- Ruby 3.1 support. Ruby 3.1 is end-of-life, and nokogiri's security fixes (1.19.x) need Ruby 3.2.
+
+### Security
+- nokogiri must now be 1.19.5 or later, any 1.x (was 1.15.x only). The old pin held apps on nokogiri releases with known vulnerabilities, a critical one among them, and blocked Rails 8.1.4.1, whose HTML sanitizer needs nokogiri 1.19.5.
+
 ## [0.3.0] - 2026-10-05
 
 HowLongToBeat started answering 429 to bursts of requests in late September 2026, which is why this release paces them.
