@@ -1,8 +1,8 @@
 PATH
   remote: .
   specs:
-    howlongtobeat (0.3.0)
-      nokogiri (~> 1.15.0)
+    howlongtobeat (0.4.0)
+      nokogiri (>= 1.19.5, < 2)
       ostruct (~> 0.6.0)
 
 GEM
@@ -16,12 +16,24 @@ GEM
       rexml
     diff-lcs (1.6.0)
     hashdiff (1.2.1)
-    mini_portile2 (2.8.8)
-    nokogiri (1.15.7)
-      mini_portile2 (~> 2.8.2)
+    nokogiri (1.19.7-aarch64-linux-gnu)
+      racc (~> 1.4)
+    nokogiri (1.19.7-aarch64-linux-musl)
+      racc (~> 1.4)
+    nokogiri (1.19.7-arm-linux-gnu)
+      racc (~> 1.4)
+    nokogiri (1.19.7-arm-linux-musl)
+      racc (~> 1.4)
+    nokogiri (1.19.7-arm64-darwin)
+      racc (~> 1.4)
+    nokogiri (1.19.7-x86_64-darwin)
+      racc (~> 1.4)
+    nokogiri (1.19.7-x86_64-linux-gnu)
+      racc (~> 1.4)
+    nokogiri (1.19.7-x86_64-linux-musl)
       racc (~> 1.4)
     ostruct (0.6.1)
-    public_suffix (6.0.2)
+    public_suffix (7.0.5)
     racc (1.8.1)
     rake (13.2.1)
     rexml (3.4.4)
@@ -56,7 +68,6 @@ PLATFORMS
 DEPENDENCIES
   bundler (~> 2.0)
   howlongtobeat!
-  public_suffix (< 7)
   rake (~> 13.0)
   rspec (~> 3.0)
   webmock (~> 3.23)
